@@ -37,10 +37,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout
+    - name: Checkout Source Repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 1
+
+    - name: Checkout StrykerJS Workflow Files
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ github.repository_owner }}/GitHubWorkflows
+        path: .workflowFiles
+        token: ${{ secrets.GITHUB_TOKEN }}
+        sparse-checkout: |
+          .github/workflows/strykerJS/
 
     - name: Validate Stryker Config
       run: |
@@ -53,22 +62,23 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
 
     - name: npm install
-      run: npm i
+      run: npm ci
         
     - name: Install Temporary Dependencies
       run: npm install axios adm-zip @actions/core @actions/github
 
     - name: Download and Extract Incremental File
-      run: node .github/workflows/strykerJS/download-artifact.js
+      run: node .workflowFiles/.github/workflows/strykerJS/download-artifact.js
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         ARTIFACT_NAME: ${{ env.ARTIFACT_NAME }}
 
     - name: Determine Files to Stryke
       id: determine-files
-      run: node .github/workflows/strykerJS/determine-files.js
+      run: node .workflowFiles/.github/workflows/strykerJS/determine-files.js
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         FILESTOSTRYKE_COUNT: ${{ env.FILESTOSTRYKE_COUNT }}
