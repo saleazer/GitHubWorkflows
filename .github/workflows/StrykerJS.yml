@@ -1,0 +1,106 @@
+name: StrykerJS Mutation Testing
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        default: '22.17.0'
+        type: string
+      source-path:
+        description: 'Path to source files for Angular projects'
+        required: false
+        default: 'src/app'
+        type: string
+      artifact-name:
+        description: 'Name for the incremental artifact'
+        required: false
+        default: 'stryker-incremental'
+        type: string
+      stryker-config:
+        description: 'Path to Stryker config file'
+        required: false
+        default: 'stryker.config.mjs'
+        type: string
+
+env:
+  NODE_VERSION: ${{ inputs.node-version }}
+  INCREMENTAL_PATH: reports/stryker-incremental.json
+  FILESTOSTRYKE_COUNT: 0
+  FILESTOSTRYKE: ''
+  SOURCE_PATH: ${{ inputs.source-path }}
+  ARTIFACT_NAME: ${{ inputs.artifact-name }}
+
+jobs:
+  strykerJS:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+
+    - name: Validate Stryker Config
+      run: |
+        if [ ! -f "${{ inputs.stryker-config }}" ]; then
+          echo "Error: Stryker config file not found at ${{ inputs.stryker-config }}. Unable to run Stryker."
+          exit 1
+        fi
+
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: npm install
+      run: npm i
+        
+    - name: Install Temporary Dependencies
+      run: npm install axios adm-zip @actions/core @actions/github
+
+    - name: Download and Extract Incremental File
+      run: node .github/workflows/strykerJS/download-artifact.js
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        ARTIFACT_NAME: ${{ env.ARTIFACT_NAME }}
+
+    - name: Determine Files to Stryke
+      id: determine-files
+      run: node .github/workflows/strykerJS/determine-files.js
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        FILESTOSTRYKE_COUNT: ${{ env.FILESTOSTRYKE_COUNT }}
+        SOURCE_PATH: ${{ env.SOURCE_PATH }}
+
+    - name: Run Stryker
+      if: steps.determine-files.outputs.files-to-stryke != ''
+      run: |
+        EXTRACTED_PATH="${{ github.workspace }}/.github/workflows/strykerJS/extracted_artifact/stryker-incremental.json"
+        FILES_TO_STRYKE="${{ steps.determine-files.outputs.files-to-stryke }}"
+        
+        if [ -f "$EXTRACTED_PATH" ]; then
+          echo "Incremental artifact found, continuing Stryker incremental run."
+          echo "Running Stryker incremental with:" && echo "$FILES_TO_STRYKE" | tr ',' '\n'
+          npx stryker run --incremental --incrementalFile "$EXTRACTED_PATH" --configFile ${{ inputs.stryker-config }}
+        else
+          echo "No incremental artifact found, running Stryker as initial incremental run."
+          echo "Running Stryker with $FILES_TO_STRYKE."
+          npx stryker run --incremental --incrementalFile "$EXTRACTED_PATH" --configFile ${{ inputs.stryker-config }}
+        fi
+        echo "INCREMENTAL_PATH=$EXTRACTED_PATH" >> $GITHUB_ENV
+
+    - name: Upload Stryker Incremental Report
+      if: steps.determine-files.outputs.files-to-stryke != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.ARTIFACT_NAME }}_${{ steps.determine-files.outputs.files-count }}
+        path: ${{ env.INCREMENTAL_PATH }}
+  
+    - name: Upload Stryker Coverage Report
+      if: steps.determine-files.outputs.files-to-stryke != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: stryker-coverage
+        path: reports/mutation/mutation.html
