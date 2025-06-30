@@ -87,17 +87,25 @@ jobs:
     - name: Run Stryker
       if: steps.determine-files.outputs.files-to-stryke != ''
       run: |
-        EXTRACTED_PATH="${{ github.workspace }}/.github/workflows/strykerJS/extracted_artifact/stryker-incremental.json"
+        EXTRACTED_PATH="${{ github.workspace }}/.workflowFiles/.github/workflows/strykerJS/extracted_artifact/stryker-incremental.json"
         FILES_TO_STRYKE="${{ steps.determine-files.outputs.files-to-stryke }}"
         
         if [ -f "$EXTRACTED_PATH" ]; then
           echo "Incremental artifact found, continuing Stryker incremental run."
-          echo "Running Stryker incremental with:" && echo "$FILES_TO_STRYKE" | tr ',' '\n'
-          npx stryker run --incremental --incrementalFile "$EXTRACTED_PATH" --configFile ${{ inputs.stryker-config }}
+          if [ "$FILES_TO_STRYKE" != '' ]; then
+            echo "Running Stryker incremental with:" && echo "$FILES_TO_STRYKE" | tr ',' '\n'
+            npx stryker run --incremental --incrementalFile "$EXTRACTED_PATH"
+          else
+            echo "No component files were defined to stryke. Unable to run Stryker incremental."
+          fi
         else
           echo "No incremental artifact found, running Stryker as initial incremental run."
-          echo "Running Stryker with $FILES_TO_STRYKE."
-          npx stryker run --incremental --incrementalFile "$EXTRACTED_PATH" --configFile ${{ inputs.stryker-config }}
+          if [ "$FILES_TO_STRYKE" != '' ]; then
+            echo "Running Stryker with $FILES_TO_STRYKE."
+            npx stryker run --incremental --incrementalFile "$EXTRACTED_PATH"
+          else
+            echo "No component files were defined to stryke. Unable to run Stryker."
+          fi
         fi
         echo "INCREMENTAL_PATH=$EXTRACTED_PATH" >> $GITHUB_ENV
 
